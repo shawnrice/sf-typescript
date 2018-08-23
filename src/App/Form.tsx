@@ -52,8 +52,15 @@ class MyForm extends React.PureComponent<any, any> {
     super(props);
     this.state = {
       errors: null,
+      showSlider: true,
     };
   }
+
+  handleAfterSubmit = values => {
+    this.setState({ showSlider: false });
+    console.log('called');
+    return Promise.resolve(values);
+  };
 
   handleError = err => {
     this.setState({ errors: err });
@@ -80,6 +87,7 @@ class MyForm extends React.PureComponent<any, any> {
             onFocus={event => console.log(event.target.name)}
             type="text"
           />
+          <Field name="selectField" type="select" multiple options={['', 'first', 'second']} />
           <Field name="test-required2" label="Testing Required" validate={required} type="text" />
           <Radios name="testa" options={[{ label: 'a', value: 'a' }, { label: 'b', value: 'b' }]} />
           <Field name="numberField" type="number" />
@@ -91,33 +99,43 @@ class MyForm extends React.PureComponent<any, any> {
           <Field name="textarea-field" type="textarea" label="textarea" value="Testing" />
           <ErrorDisplay />
         </Form>
-        <Slider onSubmit={onSubmit}>
-          <Slide>Hi</Slide>
-          <Slide
-            render={() => {
-              return <Field type="text" name="slide2" label="test" defaultValue="testing" />;
-            }}
-          />
-          <Slide>
-            <Field type="text" name="slide3" label="test2" validate={required} />
-          </Slide>
-          <Slide
-            validate={values => {
-              if (!values.slide3A && !values.slide3B) {
-                return ['You must choose either check1 or check2'];
-              }
-              return [];
-            }}
-          >
-            <Field type="checkbox" name="slide3A" label="check1" />
-            <Field type="checkbox" name="slide3B" label="check2" />
-          </Slide>
-          <Slide
-            render={props => {
-              return <pre>{JSON.stringify(props.getFormValues(), null, 2)}</pre>;
-            }}
-          />
-        </Slider>
+        {this.state.showSlider && (
+          <Slider onSubmit={onSubmit} afterSubmit={this.handleAfterSubmit}>
+            <Slide>Hi</Slide>
+            <Slide
+              render={() => {
+                return <Field type="text" name="slide2" label="test" defaultValue="testing" />;
+              }}
+            />
+            <Slide>
+              <Field type="text" name="slide3" label="test2" validate={required} />
+            </Slide>
+            <Slide
+              validate={values => {
+                if (!values.slide3A && !values.slide3B) {
+                  return ['You must choose either check1 or check2'];
+                }
+                return [];
+              }}
+            >
+              <Field type="checkbox" name="slide3A" label="check1" />
+              <Field type="checkbox" name="slide3B" label="check2" />
+            </Slide>
+            <Slide
+              shouldShowIf={props => {
+                console.log(props);
+                return props.slide3A === true;
+              }}
+            >
+              Shows if you have checeked the first checkbox
+            </Slide>
+            <Slide
+              render={props => {
+                return <pre>{JSON.stringify(props.getFormValues(), null, 2)}</pre>;
+              }}
+            />
+          </Slider>
+        )}
       </>
     );
   }

@@ -58,9 +58,7 @@ class Form extends React.PureComponent<FormProps, any> {
     // If we are to persist the values, then we'll restore them if we see the field appear again
     if (this.props.persist) {
       const previousValue = this.persistedValues[payload.name];
-      console.log(payload.name, previousValue);
       if (isDefined(previousValue)) {
-        console.log('Value defined for', payload.name, previousValue);
         payload.setValue(previousValue);
       }
     }

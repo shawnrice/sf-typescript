@@ -87,8 +87,9 @@ class Slider extends React.PureComponent<any, any> {
       return;
     }
 
+    const { current } = this.state;
     const nextSlideIndex = this.findNext();
-    if (nextSlideIndex === this.getChildren().length) {
+    if (nextSlideIndex === this.getChildren().length && nextSlideIndex === current) {
       // Call the submit handler on the form
       if (this.form && isFunction(this.form.handleOnSubmit)) {
         return execIfFunc(this.form.doSubmit);
@@ -134,10 +135,10 @@ class Slider extends React.PureComponent<any, any> {
     const { current } = this.state;
     const children = this.getChildren();
     const formValues = this.form && isFunction(this.form.getValues) ? this.form.getValues() : {};
-    const length = children.length; // eslint-disable-line
-    for (let i = current + 1; i <= length - 1; i++) {
+    const length = children.length - 1; // eslint-disable-line
+    for (let i = current + 1; i <= length; i++) {
       const slide = children[i];
-      console.log(slide.props);
+
       const { shouldShowIf = alwaysTrue } = slide.props;
       if (shouldShowIf!(formValues)) {
         return i;
@@ -146,7 +147,7 @@ class Slider extends React.PureComponent<any, any> {
     }
 
     // We moved through the `for` statement without finding a slide, so default to the last slide
-    return length - 1;
+    return length;
   };
 
   moveTo = slide => {
@@ -160,6 +161,12 @@ class Slider extends React.PureComponent<any, any> {
 
   setCurrentSlideRef = el => {
     this.currentSlide = el;
+  };
+
+  handleEnd = () => {
+    if (this.form) {
+      execIfFunc(this.form.doSubmit);
+    }
   };
 
   currentSlide: any;
@@ -202,13 +209,14 @@ class Slider extends React.PureComponent<any, any> {
     const rightClasses = classes(['sf--slider-control', 'sf--slider-control-right']);
 
     const isAtEnd = children.length - 1 === current;
+    const nextFn = isAtEnd ? this.handleEnd : this.next;
 
     return (
       <div className={classes(['sf--slider', className])}>
         <button type="button" className={leftClasses} disabled={current === 0} onClick={this.prev}>
           {PrevButton}
         </button>
-        <button type="button" className={rightClasses} onClick={this.next}>
+        <button type="button" className={rightClasses} onClick={nextFn}>
           {isAtEnd ? FinishButton : NextButton}
         </button>
         <Form

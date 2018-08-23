@@ -3,7 +3,7 @@ import { isObject } from 'lodash';
 import asField from './asField';
 import { classes, hasOwnProperty, noop, toKey } from '../../helpers/index';
 
-interface FieldProps {
+export interface FieldProps {
   name: string;
   type: string;
 
@@ -190,7 +190,7 @@ export class Field extends React.PureComponent<FieldProps, {}> {
         );
       default:
         return INPUT_TYPES.includes(type) ? (
-          <input {...props} className={appliedClasses} type={type || 'text'} id={id} ref={setRef} />
+          <input {...props} className={appliedClasses} type={type} id={id} ref={setRef} />
         ) : (
           <input {...props} className={appliedClasses} type="text" id={id} ref={setRef} />
         );

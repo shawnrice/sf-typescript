@@ -1,20 +1,22 @@
 import * as React from 'react';
-import { isFunction } from 'lodash';
+import { isFunction, isEqual } from 'lodash';
 
 import {
+  canAccessSelectionStart,
+  composeHOCs,
   execIfFunc,
   execOrMapFn,
+  filterKeysFromObj,
+  findValue,
+  hasOwnProperty,
   identity,
-  composeHOCs,
   isDefined,
   isNull,
-  findValue,
   maybeApply,
-  filterKeysFromObj,
-  hasOwnProperty,
+  moveCursor,
 } from '../../helpers/index';
 
-import { AsFieldContext, withForm, withSlide } from '../../helpers/contexts';
+import { AsFieldContext, withAsField, withForm, withSlide } from '../../helpers/contexts';
 
 const emptyArray = [];
 
@@ -23,6 +25,7 @@ interface AsFieldProps {
 
   type?: string;
 
+  autoFocus?: boolean;
   autoComplete?: string;
   defaultValue?: any;
   value?: any;
@@ -65,6 +68,9 @@ export interface AsFieldState {
   cursor?: number;
 }
 
+/**
+ * Determines initial value for a field based on a few different props
+ */
 const getInitialValue = <P extends AsFieldProps>(props: P & ContextProps) => {
   const { defaultValue, value, defaultChecked, checked, type, initialFormValues = {} } = props;
   const { [props.name]: initialValue } = initialFormValues;
@@ -78,6 +84,8 @@ const getInitialValue = <P extends AsFieldProps>(props: P & ContextProps) => {
       return findValue(!!checked, !!initialValue, !!defaultChecked, false);
     case 'number':
       return findValue(value, initialValue, defaultValue, null);
+    case 'select':
+      return findValue(value, initialValue, defaultValue, props.multiple ? [] : '');
     default:
       return findValue(value, initialValue, defaultValue, '');
   }
@@ -103,10 +111,9 @@ const removeProps = [
   'formErrors',
   'registerWithSlide',
   'unregisterFromSlide',
+  'registerWithField',
+  'unregisterFromField',
 ];
-
-const typesWithSelectionStart = ['text', 'search', 'password', 'tel', 'url'];
-const canAccessSelectionStart = (type: string): boolean => typesWithSelectionStart.includes(type);
 
 interface InjectedProps {
   onBlur(event): void;
@@ -134,30 +141,60 @@ const asField = <P extends AsFieldProps>(
 
       const processed = maybeApply(this.format, getInitialValue(props), null);
       this.initialValue = Array.isArray(processed) ? processed[0] : processed;
-      // this.initialErrors = this.validate(this.initialValue);
       this.autoComplete = rando();
       this.state = {
         value: this.initialValue,
-        errors: [], //this.initialErrors,
+        errors: [],
+      };
+      this.fieldInterface = {
+        registerWithField: this.register,
+        unregisterFromField: this.unregister,
       };
     }
 
     static defaultProps = {
-      validateDebounceTimeout: 100,
-      unformat: identity,
       format: (value, cursor) => [value, cursor],
+      unformat: identity,
+      validateDebounceTimeout: 100,
     };
 
+    autoComplete: string;
+    fieldInterface: {
+      registerWithField: (payload) => void;
+      unregisterFromField: (name: string) => void;
+    };
+    fields = {};
+    initialErrors: string[];
+    initialValue: any;
+    innerRef: any;
+    validateDebounceTimer = null;
+
     componentDidMount() {
-      const { register, name, registerWithSlide } = this.props;
+      const { register, name, registerWithSlide, autoFocus, type } = this.props;
       const { getValue, setValue, reset, validate, focus } = this;
       execIfFunc(register, { name, getValue, setValue, reset, validate, focus });
       execIfFunc(registerWithSlide, { name, getValue, setValue, reset, validate, focus });
+
+      if (!autoFocus || !this.innerRef) {
+        return;
+      }
+      // Emulate the browser autoFocus if (1) requested and (2) possible
+
+      // Actually focus on the field
+      this.innerRef.focus();
+      // Safari will freak out if we try to access selectionStart on an input` with many different types.
+      if (canAccessSelectionStart(type)) {
+        moveCursor(this.innerRef);
+      }
     }
 
-    componentDidUpdate() {
+    componentDidUpdate(_, prevState) {
+      if (!this.innerRef || !canAccessSelectionStart(this.props.type)) {
+        return;
+      }
+
       const { cursor } = this.state;
-      if (this.innerRef && canAccessSelectionStart(this.props.type)) {
+      if (cursor !== prevState.cursor && isDefined(cursor) && !isNull(cursor)) {
         this.innerRef.selectionStart = this.innerRef.selectionEnd = cursor;
       }
     }
@@ -168,46 +205,85 @@ const asField = <P extends AsFieldProps>(
       execIfFunc(unregisterFromSlide, name);
     }
 
-    fields = {};
-
-    initialValue: any;
-    initialErrors: string[];
-    autoComplete: string;
-    innerRef: any;
-
+    /**
+     * Registers sub-fields, passed as a prop through context
+     */
     register = payload => {
       this.fields[payload.name] = { ...payload };
     };
 
+    /**
+     * Unregisters sub-fields, passed as a prop through context
+     */
     unregister = name => {
       const { [name]: _, ...rest } = this.fields;
       this.fields = rest;
     };
 
-    fieldInterface = { register: this.register, unregister: this.unregister };
+    /**
+     * Gets the unformatted value of the field
+     */
+    getValue = (): any => this.unformat(this.state.value);
 
-    getValue = () => this.unformat(this.state.value);
-
+    /**
+     * Sets the value internally
+     */
     setValue = (rawValue: any) => {
       const rawCursor = rawValue && hasOwnProperty(rawValue, 'length') ? rawValue.length : null;
       const [value, cursor] = this.format(rawValue, rawCursor);
       this.setState({ value, cursor });
     };
 
-    reset = () => this.setState({ value: this.initialValue, errors: emptyArray });
+    /**
+     * Resets field to initial state
+     */
+    reset = () => {
+      this.setState({ value: this.initialValue, errors: emptyArray });
+
+      // If this is acting as a wrapper to compose fields, then call the reset wrapped fields
+      const { fields } = this;
+      Object.keys(fields).forEach(field => execIfFunc(fields[field].reset));
+    };
 
     handleOnKeyDown = event => {
       event.persist();
       maybeApply(this.props.onKeyDown, event);
     };
 
+    /**
+     * Convenience function to determine if something is a multiselect
+     */
+    isMultiSelect = () => this.props.type === 'select' && this.props.multiple;
+
+    /**
+     * Generic change event for inner field
+     */
     handleOnChange = event => {
       event.persist();
-      const { checked, value } = event.target;
+      const { checked, options, value } = event.target;
       const { validateOnChange, validateDebounceTimeout, type, onChange } = this.props;
 
-      if (type === 'checkbox') {
+      // Handle checkboxes and radio buttons early and exit
+      if (type === 'checkbox' || type === 'radio') {
         this.setState({ value: checked });
+        execIfFunc(onChange, event);
+        return;
+      }
+
+      // Handle multiselects early and exit
+      if (this.isMultiSelect()) {
+        const values = [];
+        for (let i = 0; i < options.length; i++) {
+          // Grab all the options that are selected
+          if (options[i].selected) {
+            values.push(options[i].value);
+          }
+        }
+        // Only update the state value if the arrays are actually different
+        if (!isEqual(this.state.value, values)) {
+          this.setValue(values);
+        }
+        this.setState({ value: values });
         execIfFunc(onChange, event);
         return;
       }
@@ -237,8 +313,9 @@ const asField = <P extends AsFieldProps>(
       execIfFunc(onChange, event);
     };
 
-    validateDebounceTimer = null;
-
+    /**
+     * Generic focus handler for user-supplied callback
+     */
     handleOnFocus = event => {
       const { onFocus } = this.props;
       if (isFunction(onFocus)) {
@@ -247,18 +324,25 @@ const asField = <P extends AsFieldProps>(
       }
     };
 
+    /**
+     * Generic blur handler for user-supplied callback, also does validation based on validateOnBlur
+     */
     handleOnBlur = event => {
       const { onBlur, validateOnBlur } = this.props;
+      event.persist();
+
       if (validateOnBlur) {
         this.validate(event.target.value, true);
       }
 
       if (isFunction(onBlur)) {
-        event.persist();
         onBlur(event);
       }
     };
 
+    /**
+     * Generic click handler for user-supplied callback
+     */
     handleOnClick = event => {
       const { onClick } = this.props;
       if (isFunction(onClick)) {
@@ -267,20 +351,33 @@ const asField = <P extends AsFieldProps>(
       }
     };
 
+    /**
+     * Proxy function to focus on inner field
+     */
     focus = () => {
       if (this.innerRef && isFunction(this.innerRef.focus)) {
         this.innerRef.focus();
       }
     };
 
-    format = (value, cursor) => maybeApply(this.props.format, value, cursor);
+    /**
+     * Formats a value according to prop-supplied function
+     */
+    format = (value: any, cursor: number | null = null): [any, number | null] =>
+      maybeApply(this.props.format, value, cursor);
 
-    unformat = value => maybeApply(this.props.unformat, value);
+    /**
+     * Removes formatting from value with a prop-supplied function
+     */
+    unformat = (value: any): any => maybeApply(this.props.unformat, value);
 
-    validate = (value: any, updateErrors: boolean = false) => {
+    /**
+     * Validates a field based on prop-supplied function
+     */
+    validate = (value: any, updateErrors: boolean = false): React.ReactNode[] => {
       const { validate } = this.props;
 
-      const initial = execOrMapFn(validate, value);
+      const initial = execOrMapFn(validate, value) as React.ReactNode | React.ReactNode[];
       const errors = Array.isArray(initial) ? initial.filter(Boolean) : [initial].filter(Boolean);
       if (updateErrors) {
         this.setState({ errors });
@@ -288,8 +385,14 @@ const asField = <P extends AsFieldProps>(
       return errors.length === 0 ? emptyArray : errors;
     };
 
+    /**
+     * Determines if a field is valid according to prop-supplied function
+     */
     isValid = () => this.validate(this.getValue()).length === 0;
 
+    /**
+     * Prop passed to inner component to set the ref
+     */
     setRef = el => {
       this.innerRef = el;
     };
@@ -324,5 +427,5 @@ const asField = <P extends AsFieldProps>(
 };
 
 export { asField, AsFieldContext };
-const Composed = composeHOCs<AsFieldProps>(asField, withSlide, withForm);
+const Composed = composeHOCs<AsFieldProps>(asField, withAsField, withSlide, withForm);
 export default Composed;
