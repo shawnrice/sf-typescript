@@ -1,8 +1,8 @@
 import * as React from 'react';
 
 const AsFieldContext = React.createContext({
-  register: payload => {},
-  unregister: name => {},
+  registerWithField: payload => {},
+  unregisterFromField: name => {},
 });
 AsFieldContext.Consumer.displayName = 'AsFieldConsumer';
 AsFieldContext.Provider.displayName = 'AsFieldProvider';
@@ -15,6 +15,16 @@ const FormContext = React.createContext({
   hasFormSubmitted: false,
   formErrors: [],
 });
+
+export function withAsField(Component) {
+  return function AsFieldComponent(props: { [key: string]: any }) {
+    return (
+      <AsFieldContext.Consumer>
+        {asFieldProps => <Component {...props} {...asFieldProps} />}
+      </AsFieldContext.Consumer>
+    );
+  };
+}
 
 FormContext.Consumer.displayName = 'FormConsumer';
 FormContext.Provider.displayName = 'FormProvider';
