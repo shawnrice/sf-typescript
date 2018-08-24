@@ -81,6 +81,12 @@ export const isDefined = arg => typeof arg !== 'undefined';
  * Checks if the arg is null
  */
 export const isNull = arg => arg === null;
+
+export const isPromise = (obj: any): boolean =>
+  !!obj && ['function', 'object'].includes(typeof obj) && isFunction(obj.then);
+
+export const maybePromisify = (obj: any) => (isPromise(obj) ? obj : Promise.resolve(obj));
+
 /**
  * Returns first defined value, defaults to empty string
  */
@@ -290,7 +296,7 @@ function createMask(pattern: string, wildcard: string, unbound: boolean) {
  * @param unbound
  * @param wildcard
  */
-export default function createFormatter(
+export function createFormatter(
   transformer: (value: any) => string,
   pattern: string,
   unbound = false,

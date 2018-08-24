@@ -8,11 +8,12 @@ AsFieldContext.Consumer.displayName = 'AsFieldConsumer';
 AsFieldContext.Provider.displayName = 'AsFieldProvider';
 
 const FormContext = React.createContext({
-  register: payload => {},
-  unregister: name => {},
+  registerWithForm: payload => {},
+  unregisterFromForm: name => {},
   formAutoComplete: true,
   isFormSubmitting: false,
   hasFormSubmitted: false,
+  defaultFormValues: {},
   formErrors: [],
 });
 
@@ -43,8 +44,14 @@ export function withForm(Component) {
   return function FormComponent(props: { [key: string]: any }) {
     return (
       <FormContext.Consumer>
-        {({ register, unregister }) => (
-          <Component {...props} register={register} unregister={unregister} />
+        {({ registerWithForm, unregisterFromForm, formAutoComplete, defaultFormValues }) => (
+          <Component
+            {...props}
+            registerWithForm={registerWithForm}
+            unregisterFromForm={unregisterFromForm}
+            formAutoComplete={formAutoComplete}
+            defaultFormValues={defaultFormValues}
+          />
         )}
       </FormContext.Consumer>
     );

@@ -3,10 +3,30 @@ import { classes, execIfFunc } from '../../helpers/index';
 import Form from '../Form/index';
 import { clamp, isFunction } from 'lodash';
 
+export interface SliderProps {
+  formName?: string;
+  current?: number;
+  autoComplete?: boolean;
+  className?: string;
+  children: React.ReactNode;
+  PrevButton?: React.ReactNode;
+  NextButton?: React.ReactNode;
+  FinishButton?: React.ReactNode;
+  beforeSubmit?(values: object): Promise<object>;
+  onSubmit(values: object): Promise<object>;
+  afterSubmit?(values: object): Promise<object>;
+  commonProps?: { [key: string]: any };
+  defaultValues?: object;
+}
+
+export interface SliderState {
+  current: number;
+}
+
 const alwaysTrue = () => true;
 
-class Slider extends React.PureComponent<any, any> {
-  constructor(props) {
+export class Slider extends React.PureComponent<SliderProps, SliderState> {
+  constructor(props: SliderProps) {
     super(props);
     // this.form = {};
     this.state = {
@@ -26,6 +46,8 @@ class Slider extends React.PureComponent<any, any> {
       setRef: this.setCurrentSlideRef,
       ...this.props.commonProps,
     };
+
+    this.mounted = false;
   }
 
   static defaultProps = {
@@ -33,7 +55,7 @@ class Slider extends React.PureComponent<any, any> {
     autoComplete: 'off',
     PrevButton: '←',
     NextButton: '→',
-    FinishButton: 'Finish',
+    FinishButton: '→',
     beforeSubmit: (values: object | Promise<object>) => Promise.resolve(values),
     afterSubmit: (values: object | Promise<object>) => Promise.resolve(values),
     commonProps: {},
@@ -42,8 +64,15 @@ class Slider extends React.PureComponent<any, any> {
   };
 
   injectSlideProps: object;
+  currentSlide: any;
+  form: any;
+  mounted: boolean;
 
-  componentDidUpdate(_, prevState) {
+  componentDidMount() {
+    this.mounted = true;
+  }
+
+  componentDidUpdate(_: SliderProps, prevState: SliderState) {
     // Since we're using indices to keep track of progress, we _could_ get off track if one
     // disappears, so we're going to disallow dynamically manipulating the children
     // invariant(
@@ -64,22 +93,33 @@ class Slider extends React.PureComponent<any, any> {
     }
   }
 
-  prev = () => {
-    const prevSlideIndex = this.findPrev();
-    if (prevSlideIndex === this.state.current) {
-      return;
-    }
+  componentWillUnmount() {
+    this.mounted = false;
+  }
 
-    const { beforeExit, beforeExitToPrev } = this.currentSlide.props;
-    if (isFunction(beforeExitToPrev)) {
-      return beforeExitToPrev(this.injectSlideProps).then(() => this.moveTo(prevSlideIndex));
-    }
+  setFormRef = (el: any) => {
+    this.form = el;
+  };
 
-    if (isFunction(beforeExit)) {
-      return beforeExit(this.injectSlideProps).then(() => this.moveTo(prevSlideIndex));
-    }
+  setCurrentSlideRef = (el: any) => {
+    this.currentSlide = el;
+  };
 
-    this.moveTo(prevSlideIndex);
+  isCurrentSlideValid = () => {
+    const { currentSlide } = this;
+    return currentSlide && isFunction(currentSlide.isSlideValid)
+      ? currentSlide.isSlideValid()
+      : true;
+  };
+
+  getChildren = (): any => React.Children.toArray(this.props.children);
+
+  getFormValues = () => (this.form && isFunction(this.form.getValues) ? this.form.getValues() : {});
+
+  moveTo = (slide: number) => {
+    if (this.mounted) {
+      this.setState({ current: slide });
+    }
   };
 
   next = () => {
@@ -113,22 +153,22 @@ class Slider extends React.PureComponent<any, any> {
     return this.moveTo(this.findNext());
   };
 
-  findPrev = () => {
-    const { current } = this.state;
-    const children = this.getChildren();
-    const formValues = this.form && isFunction(this.form.getValues) ? this.form.getValues() : {};
-    for (let i = current - 1; i >= 0; i--) {
-      const slide = children[i];
-      const { shouldShowIf = alwaysTrue } = slide.props;
-
-      if (shouldShowIf!(formValues)) {
-        return i;
-      }
-      // No valid candidate for next slide, so we test the next
+  prev = () => {
+    const prevSlideIndex = this.findPrev();
+    if (prevSlideIndex === this.state.current) {
+      return;
     }
 
-    // If we're here, it means that we need to show the first
-    return 0;
+    const { beforeExit, beforeExitToPrev } = this.currentSlide.props;
+    if (isFunction(beforeExitToPrev)) {
+      return beforeExitToPrev(this.injectSlideProps).then(() => this.moveTo(prevSlideIndex));
+    }
+
+    if (isFunction(beforeExit)) {
+      return beforeExit(this.injectSlideProps).then(() => this.moveTo(prevSlideIndex));
+    }
+
+    this.moveTo(prevSlideIndex);
   };
 
   findNext = () => {
@@ -150,17 +190,22 @@ class Slider extends React.PureComponent<any, any> {
     return length;
   };
 
-  moveTo = slide => {
-    console.log('move to', slide);
-    this.setState({ current: slide });
-  };
+  findPrev = () => {
+    const { current } = this.state;
+    const children = this.getChildren();
+    const formValues = this.form && isFunction(this.form.getValues) ? this.form.getValues() : {};
+    for (let i = current - 1; i >= 0; i--) {
+      const slide = children[i];
+      const { shouldShowIf = alwaysTrue } = slide.props;
 
-  setFormRef = el => {
-    this.form = el;
-  };
+      if (shouldShowIf!(formValues)) {
+        return i;
+      }
+      // No valid candidate for next slide, so we test the next
+    }
 
-  setCurrentSlideRef = el => {
-    this.currentSlide = el;
+    // If we're here, it means that we need to show the first
+    return 0;
   };
 
   handleEnd = () => {
@@ -168,20 +213,6 @@ class Slider extends React.PureComponent<any, any> {
       execIfFunc(this.form.doSubmit);
     }
   };
-
-  currentSlide: any;
-  isCurrentSlideValid = () => {
-    const { currentSlide } = this;
-    return currentSlide && isFunction(currentSlide.isSlideValid)
-      ? currentSlide.isSlideValid()
-      : true;
-  };
-
-  getChildren = (): any => React.Children.toArray(this.props.children);
-
-  getFormValues = () => (this.form && isFunction(this.form.getValues) ? this.form.getValues() : {});
-
-  form: any;
 
   render() {
     const {
@@ -220,14 +251,14 @@ class Slider extends React.PureComponent<any, any> {
           {isAtEnd ? FinishButton : NextButton}
         </button>
         <Form
-          name={formName}
+          name={formName!}
           onSubmit={onSubmit}
           beforeSubmit={beforeSubmit}
           afterSubmit={afterSubmit}
           autoComplete={autoComplete}
           persist
           ref={this.setFormRef}
-          // defaultValues={defaultValues}
+          defaultValues={defaultValues}
         >
           {React.cloneElement(slide as any, this.injectSlideProps)}
         </Form>
@@ -236,5 +267,4 @@ class Slider extends React.PureComponent<any, any> {
   }
 }
 
-export { Slider };
 export default Slider;

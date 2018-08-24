@@ -47,8 +47,8 @@ interface AsFieldProps {
 }
 
 interface ContextProps {
-  register?(payload): void;
-  unregister?(payload): void;
+  registerWithForm?(payload): void;
+  unregisterFromForm?(payload): void;
   formAutoComplete?: boolean;
   onKeyDown?(event): void;
   initialFormValues: { [key: string]: any };
@@ -93,8 +93,8 @@ const getInitialValue = <P extends AsFieldProps>(props: P & ContextProps) => {
 
 const removeProps = [
   'defaultValue',
-  'register',
-  'unregister',
+  'registerWithForm',
+  'unregisterFromForm',
   'format',
   'formAutoComplete',
   'unformat',
@@ -113,6 +113,7 @@ const removeProps = [
   'unregisterFromSlide',
   'registerWithField',
   'unregisterFromField',
+  'defaultFormValues',
 ];
 
 interface InjectedProps {
@@ -147,8 +148,8 @@ const asField = <P extends AsFieldProps>(
         errors: [],
       };
       this.fieldInterface = {
-        registerWithField: this.register,
-        unregisterFromField: this.unregister,
+        registerWithField: this.registerWithField,
+        unregisterFromField: this.unregisterFromField,
       };
     }
 
@@ -170,9 +171,9 @@ const asField = <P extends AsFieldProps>(
     validateDebounceTimer = null;
 
     componentDidMount() {
-      const { register, name, registerWithSlide, autoFocus, type } = this.props;
+      const { registerWithForm, name, registerWithSlide, autoFocus, type } = this.props;
       const { getValue, setValue, reset, validate, focus } = this;
-      execIfFunc(register, { name, getValue, setValue, reset, validate, focus });
+      execIfFunc(registerWithForm, { name, getValue, setValue, reset, validate, focus });
       execIfFunc(registerWithSlide, { name, getValue, setValue, reset, validate, focus });
 
       if (!autoFocus || !this.innerRef) {
@@ -200,22 +201,21 @@ const asField = <P extends AsFieldProps>(
     }
 
     componentWillUnmount() {
-      const { name, unregister, unregisterFromSlide } = this.props;
-      execIfFunc(unregister, name);
-      execIfFunc(unregisterFromSlide, name);
+      const { name, unregisterFromForm, unregisterFromSlide } = this.props;
+      execOrMapFn([unregisterFromForm, unregisterFromSlide], name);
     }
 
     /**
      * Registers sub-fields, passed as a prop through context
      */
-    register = payload => {
+    registerWithField = payload => {
       this.fields[payload.name] = { ...payload };
     };
 
     /**
      * Unregisters sub-fields, passed as a prop through context
      */
-    unregister = name => {
+    unregisterFromField = name => {
       const { [name]: _, ...rest } = this.fields;
       this.fields = rest;
     };
